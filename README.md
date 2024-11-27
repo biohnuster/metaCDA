@@ -27,6 +27,6 @@ pyTorch:
 * scikit-learn=1.2.0
 
 ## DATASET
-Please use the AliCloud disk link to download:https://pan.baidu.com/s/1VFzmcl0Zrc2MonqKSEJkAQ code:d7nu
+Please use the link to download:https://pan.baidu.com/s/1VFzmcl0Zrc2MonqKSEJkAQ code:d7nu
 
 Please send a email to our team to get the extraction code：1873288525@qq.com
