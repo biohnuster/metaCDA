@@ -12,14 +12,14 @@ from sklearn.metrics import roc_curve, auc, precision_recall_curve
 from GATCL import GATCNNMF
 from utils import build_heterograph, sort_matrix, GKL
 import matplotlib.pyplot as plt
-from utils1.data_loader import load_data
+# from utils1.data_loader import load_data
 
 # 参数设置
 parser = argparse.ArgumentParser()
 parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='Disables CUDA training.')
 parser.add_argument('--seed', type=int, default=2022, help='Random seed.')
-parser.add_argument('--epochs', type=int, default=300,  # 基本上100就已经达到效果了
+parser.add_argument('--epochs', type=int, default=600,  
                     help='Number of epochs to train.')
 parser.add_argument('--lr', type=float, default=0.0001,
                     help='Learning rate.')
@@ -130,3 +130,116 @@ if __name__ == '__main__':
         test_predict_result = test_predict_result.cpu()
         test_lable = test_lable.cpu()
 
+        for num in range(test_predict_result.size()[0]):
+            row_num = num // dis_number
+            col_num = num % dis_number
+            prediction_matrix[row_num, col_num] = test_predict_result[num, 0]
+
+        zero_matrix = np.zeros(prediction_matrix.shape).astype('int64')
+        prediction_matrix_temp = prediction_matrix.copy()
+        prediction_matrix_temp = prediction_matrix_temp + zero_matrix
+        min_value = np.min(prediction_matrix_temp)
+
+        index_where_2 = np.where(roc_circrna_disease_matrix == 2)
+        # 使参数训练的正样本得分在排序的时候下沉(从大到小排序)
+        prediction_matrix_temp[index_where_2] = min_value - 20
+
+
+        precision1_new, recall_new, pr_threshods_new = precision_recall_curve(A.flatten(), test_predict_result)
+        aupr_score = auc(recall_new, precision1_new)
+        print(aupr_score,"aupr_score")
+        fpr, tpr, auc_thresholds = roc_curve(A.flatten(), test_predict_result)
+        auc_score = auc(fpr, tpr)
+        print(auc_score,"auc_score")
+
+        # 得分排序(得分矩阵排序以及对应的关联矩阵排序)
+        sorted_rna_dis_matrix, sorted_prediction_matrix = sort_matrix(prediction_matrix_temp,
+                                                                      roc_circrna_disease_matrix)
+
+        tpr_list = []
+        fpr_list = []
+        recall_list = []
+        precision_list = []
+        accuracy_list = []
+        F1_list = []
+        for cutoff in range(sorted_rna_dis_matrix.shape[0]):
+            P_matrix = sorted_rna_dis_matrix[0:cutoff + 1, :]
+            N_matrix = sorted_rna_dis_matrix[cutoff + 1:sorted_rna_dis_matrix.shape[0] + 1, :]
+            TP = np.sum(P_matrix == 1)
+            FP = np.sum(P_matrix == 0)
+            TN = np.sum(N_matrix == 0)
+            FN = np.sum(N_matrix == 1)
+            tpr = TP / (TP + FN)
+            fpr = FP / (FP + TN)
+            tpr_list.append(tpr)
+            fpr_list.append(fpr)
+            recall = TP / (TP + FN)
+            precision = TP / (TP + FP)
+            recall_list.append(recall)
+            precision_list.append(precision)
+            accuracy = (TN + TP) / (TN + TP + FN + FP)
+            F1 = (2 * TP) / (2 * TP + FP + FN)
+            F1_list.append(F1)
+            accuracy_list.append(accuracy)
+
+        top_list = [10, 20, 50, 100, 200]
+        for num in top_list:
+            P_matrix = sorted_rna_dis_matrix[0:num, :]
+            N_matrix = sorted_rna_dis_matrix[num:sorted_rna_dis_matrix.shape[0] + 1, :]
+            top_count = np.sum(P_matrix == 1)
+            print("top" + str(num) + ": " + str(top_count))
+
+        all_tpr.append(tpr_list)
+        all_fpr.append(fpr_list)
+        all_recall.append(recall_list)
+        all_precision.append(precision_list)
+        all_accuracy.append(accuracy_list)
+        all_F1.append(F1_list)
+
+    tpr_arr = np.array(all_tpr)
+    fpr_arr = np.array(all_fpr)
+    recall_arr = np.array(all_recall)
+    precision_arr = np.array(all_precision)
+    accuracy_arr = np.array(all_accuracy)
+    F1_arr = np.array(all_F1)
+
+
+
+    # 绘制每条曲线
+    # draw_alone_validation_roc_line(tpr_arr, fpr_arr)
+
+    # 保存tpr,fpr数据
+    np.savetxt('tpr_arr_mean_att.csv', tpr_arr, delimiter=',')
+    np.savetxt("fpr_arr_mean_att.csv", fpr_arr, delimiter=',')
+    np.savetxt('recall_arr_mean_att.csv', recall_arr, delimiter=',')
+    np.savetxt("precision_arr_mean_att.csv", precision_arr, delimiter=',')
+
+    mean_cross_tpr = np.mean(tpr_arr, axis=0)  # axis=0
+    mean_cross_fpr = np.mean(fpr_arr, axis=0)
+    mean_cross_recall = np.mean(recall_arr, axis=0)
+    mean_cross_precision = np.mean(precision_arr, axis=0)
+    mean_cross_accuracy = np.mean(accuracy_arr, axis=0)
+
+    np.savetxt('mean_cross_tpr_mean_att.csv', mean_cross_tpr, delimiter=',')
+    np.savetxt('mean_cross_fpr_mean_att.csv', mean_cross_fpr, delimiter=',')
+    np.savetxt('mean_cross_recall_mean_att.csv', mean_cross_recall, delimiter=',')
+    np.savetxt('mean_cross_precision_mean_att.csv', mean_cross_precision, delimiter=',')
+
+    # 计算此次五折的平均评价指标数值
+    mean_accuracy = np.mean(np.mean(accuracy_arr, axis=1), axis=0)
+    mean_accuracy1 = np.mean(accuracy_arr)
+    mean_recall = np.mean(np.mean(recall_arr, axis=1), axis=0)
+    mean_precision = np.mean(np.mean(precision_arr, axis=1), axis=0)
+    mean_F1 = np.mean(np.mean(F1_arr, axis=1), axis=0)
+    print("accuracy:%.4f,recall:%.4f,precision:%.4f,F1:%.4f" % (mean_accuracy, mean_recall, mean_precision, mean_F1))
+
+    roc_auc = np.trapz(mean_cross_tpr, mean_cross_fpr)
+    AUPR = np.trapz(mean_cross_precision, mean_cross_recall)
+    AUPR1 = auc(mean_cross_recall[::-1], mean_cross_precision[::-1])
+    print("AUC:%.4f, AUPR:%.4f, AUPR1:%.4f" % (roc_auc, AUPR, AUPR1))
+    # print("AUC:%.4f,AUPR:%.4f,AUPR1:%" % (roc_auc, AUPR, AUPR1))
+    plt.plot(mean_cross_fpr, mean_cross_tpr, label='mean ROC=%0.4f' % roc_auc)
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.legend(loc=0)
+    plt.show()
